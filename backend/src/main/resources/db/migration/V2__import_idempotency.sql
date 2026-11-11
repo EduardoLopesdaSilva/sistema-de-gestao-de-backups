@@ -1,0 +1,1 @@
+CREATE TABLE import_run (id UUID PRIMARY KEY, source_checksum CHAR(64) NOT NULL, source_name VARCHAR(255) NOT NULL, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), completed_at TIMESTAMPTZ, outcome VARCHAR(30) NOT NULL, imported_volumes INTEGER NOT NULL DEFAULT 0, imported_items INTEGER NOT NULL DEFAULT 0, UNIQUE(source_checksum));

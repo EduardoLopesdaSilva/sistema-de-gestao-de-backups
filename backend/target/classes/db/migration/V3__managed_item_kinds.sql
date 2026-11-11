@@ -1,0 +1,1 @@
+ALTER TABLE managed_item ADD COLUMN item_kind VARCHAR(16) NOT NULL DEFAULT 'FILE' CHECK (item_kind IN ('FILE', 'FOLDER'));
