@@ -4,12 +4,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 @Entity
 @Table(name="backup_record_import")
 public class BackupRecordImport {
-    @Id @Column(name="source_checksum", length=64) private String sourceChecksum;
+    @Id @JdbcTypeCode(SqlTypes.CHAR) @Column(name="source_checksum", length=64) private String sourceChecksum;
     @Column(name="imported_at", insertable=false, updatable=false) private Instant importedAt;
     @Column(name="imported_records", nullable=false) private int importedRecords;
     public BackupRecordImport() {}

@@ -25,8 +25,8 @@ public class AdminAccountInitializer implements ApplicationRunner {
         this.users = users; this.encoder = encoder; this.audit = audit; this.username = username; this.password = password;
     }
     @Override public void run(ApplicationArguments args) {
-        if (password.length() < 16) throw new IllegalStateException("APP_ADMIN_PASSWORD deve ter ao menos 16 caracteres.");
         if (users.findByUsername(username).isPresent()) return;
+        if (password.length() < 16) throw new IllegalStateException("APP_ADMIN_PASSWORD deve ter ao menos 16 caracteres.");
         AppUser admin = new AppUser();
         admin.setId(UUID.randomUUID()); admin.setUsername(username); admin.setPasswordHash(encoder.encode(password));
         admin.setRole("ADMIN"); admin.setActive(true); users.save(admin);
