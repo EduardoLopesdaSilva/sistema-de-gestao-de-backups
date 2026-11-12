@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Vaultline | Gestão de backups',
-  description: 'Gestão interna de volumes, backups legados, histórico e armazenamento empresarial.',
+  description: 'Cadastro e consulta de informações sobre backups, sem envio de arquivos.',
   generator: 'v0.app',
 }
 

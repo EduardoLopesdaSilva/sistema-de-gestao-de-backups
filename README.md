@@ -1,31 +1,42 @@
-# Gestão de backups empresariais
+# Gestão de informações de backup
 
-## Arquitetura e situação
-Frontend Next.js (App Router) em português; API Spring Boot 3 / Java 21; PostgreSQL Neon para metadados, usuários, auditoria e índices; binários em filesystem privado configurado por `BACKUP_STORAGE_ROOT`. Migrações Flyway; Hibernate valida o esquema. O toolchain Java 21/Maven está instalado no workspace, fora dos arquivos do projeto; o backend compila e 5 testes unitários passaram. Flyway V1–V5 foram aplicadas no Neon. A importação offline idempotente confirmou 26 volumes, 181 registros legados, 1 execução de importação e 1 evento de auditoria. O seed do ADMIN foi intencionalmente desativado durante essa execução offline; a API web permanece parada porque `APP_ADMIN_PASSWORD` tem 8 caracteres, abaixo dos 16 exigidos. A interface continua no snapshot e não autentica contra a API.
+O sistema mantém cadastros sobre backups. **A aplicação não recebe, armazena, navega ou entrega arquivos de backup.** Excluir um cadastro remove somente a linha informativa correspondente; não altera discos nem arquivos físicos.
 
-## Planilha analisada
-Arquivo original preservado em `data/Controle-Dos-Backups-Copia-b86353.xlsx`.
+## Modelo e planilha de origem
 
-- `DADOS` (206 linhas na área relevante): cabeçalho na linha 1; as linhas que identificam HD/capacidade e trazem totais/saldo são resumos de volume, não pastas. Demais linhas são agregados legados por rótulo, data textual, teste/status e tamanho/unidade; não representam uma árvore física.
-- `RESUMO` (26 volumes mais cabeçalho): referência para ocupado/capacidade/saldo/observação. Capacidades variam entre 285, 300, 465 e 921 GB; BKP IMAGEM 12 tem 485 GB ocupados em capacidade declarada de 465 GB, com saldo −20 GB. Valores preservados como escritos, sem correção.
-- `Planilha1` (214 registros mais cabeçalho): `Id-1`, `Id-2` etc. sem identificação de pessoas/caminhos; não foram associados a pessoas nem importados como arquivos. Permanecem no snapshot bruto para auditoria.
-- `CONFERIR` (7 registros mais cabeçalho): mantida integralmente no snapshot bruto; associações antigas/novas são referências textuais e não foram aplicadas por ausência de vínculo inequívoco.
-- Snapshot completo com as quatro abas em `public/data/legacy-workbook.json` e cópia importável em `backend/src/main/resources/import/legacy-workbook.json`. A importação usa chave de origem/linha e IDs determinísticos para idempotência.
-- Há fórmulas detectadas em `DADOS` e `RESUMO` (48 em cada na leitura do arquivo; o parser pode apontar células auxiliares/formatadas). Não se substituíram os valores calculados/apresentados na tabela por recálculos. Unidades e textos permanecem no snapshot. Campos vazios e status em texto permanecem explícitos. Números com vírgula/ponto e valores em MB não são silenciosamente tratados como medições físicas.
-- Divergência registrada: `Planilha1` tem totais diferentes dos saldos de `RESUMO` em vários volumes; usa-se `RESUMO` como fonte para o dashboard. O snapshot registra ambas as abas para revisão. Não são inferidas associações entre `DADOS`, `Planilha1` ou `CONFERIR`.
+Frontend Next.js e API Spring Boot 3 / Java 21 com PostgreSQL e migrações Flyway. A planilha preservada em `data/Controle-Dos-Backups-Copia-b86353.xlsx` e seu snapshot versionado em `public/data/legacy-workbook.json` foram consultados antes da definição do formulário.
 
-## Inicialização
-1. Instale Java 21 e Maven 3.9+; o PostgreSQL conectado é Neon (integração ativa neste projeto), alternativamente use PostgreSQL 15+ local.
-2. A API lê `DATABASE_URL`, `PGUSER` e `PGPASSWORD` da integração Neon; o adaptador converte a URI PostgreSQL para JDBC e exige SSL quando não há `sslmode` indicado. Para ambiente local, forneça essas mesmas variáveis ou URL JDBC, usuário e senha. Configure também `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` (mínimo 16 caracteres), `BACKUP_STORAGE_ROOT`, `CORS_ORIGIN`, `UPLOAD_MAX_FILE_SIZE`, `UPLOAD_MAX_REQUEST_SIZE`, `FREE_SPACE_WARNING_GB` e `FREE_SPACE_CRITICAL_GB`. Não coloque credenciais em arquivos versionados. A autenticação usa HTTP Basic, BCrypt e usuários persistidos em `app_user`; o primeiro ADMIN é criado a partir de `APP_ADMIN_PASSWORD`. Papéis ADMIN, OPERATOR e READER estão previstos no schema; endpoints de gestão de usuários são exclusivos do ADMIN.
-3. Use o banco Neon conectado ou um banco PostgreSQL local autorizado. O Flyway cria as tabelas da aplicação no schema padrão; não apaga nem substitui tabelas existentes. Para arquivos reais, configure um diretório exclusivo com permissões restritas, espaço adequado e backup coordenado de metadados e binários.
-4. API: `cd backend && mvn spring-boot:run`. O Flyway aplica novas migrações ao iniciar e a importação idempotente é executada após configuração válida da senha administrativa.
-5. Frontend: `pnpm install && pnpm dev`. A tela continua usando o snapshot JSON e ainda não está conectada aos endpoints da API.
+- `DADOS` contém agregados por rótulo de usuário/setor (`usuario_setor`), data textual, teste/status e tamanho/unidade. O formulário mantém esses dados como informados e os associa ao volume correspondente.
+- `RESUMO` fornece os metadados de volume usados na Visão Geral. Indicadores não são medição física.
+- `Planilha1` e `CONFERIR` permanecem preservadas no snapshot; referências sem vínculo inequívoco não foram atribuídas a usuários.
+- A migração V6 cria `backup_record` sem modificar tabelas ou dados anteriores. Os cadastros novos guardam usuário/setor, volume, data textual, status, tamanho/unidade e autoria/data técnica. Registros legados e itens gerenciados existentes continuam preservados; os itens legados não são exibidos como arquivos.
 
-As migrações V1–V5 e a carga inicial idempotente já foram executadas no Neon; uma segunda execução confirmou que os totais permanecem em 26 volumes e 181 agregados, com apenas um registro de importação. O importador carrega o snapshot versionado na inicialização; não relê o XLSX nem cria conteúdo binário. O armazenamento nunca deve aceitar caminhos absolutos do cliente.
+## Executar
 
-## API e funcionalidades
-Endpoints Spring implementados, protegidos por HTTP Basic e roles do banco: `GET /api/health`, `GET /api/csrf`, `GET /api/volumes`, `GET /api/search?q=&volume=&page=&size=`, `GET /api/reports`, `GET /api/history?page=&size=&volume=&action=`, análises `GET /api/analysis/duplicates` e `GET /api/analysis/old-files?days=&page=&size=`, administração `GET/POST /api/users` e `PATCH /api/users/{id}/status`, navegação `GET /api/volumes/{id}/items?parentId=&page=&size=`, `POST /api/volumes/{id}/folders`, `POST /api/volumes/{id}/uploads` e download `GET /api/volumes/{id}/items/{itemId}/download`. O `LegacyWorkbookImporter` grava volumes e itens agregados no Neon com checksum idempotente e audita a importação; os 26 volumes e 181 registros já foram carregados offline, sem criar conta ADMIN. V3 adiciona tipo de item gerenciado, V4 alinha o tipo do checksum da importação e V5 alinha o hash de conteúdo.
+1. Configure PostgreSQL via `DATABASE_URL` (ou variáveis equivalentes suportadas pelo projeto) e `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD`. A senha inicial do administrador precisa ter ao menos 16 caracteres. Não versione credenciais.
+2. Inicie a API em `backend` com `mvn spring-boot:run`. Flyway aplica V6 ao iniciar. O seed inicial cria a conta ADMIN quando habilitado.
+3. Configure `CORS_ORIGIN` para a origem do frontend (padrão `http://localhost:3000`) e inicie a interface com `pnpm install` e `pnpm dev`. Se a API não estiver em `http://localhost:8080`, defina `NEXT_PUBLIC_API_URL`.
+4. Clique em **Entrar na API** e autentique com uma conta cadastrada. ADMIN e OPERATOR podem cadastrar, editar e excluir; READER pode consultar. As permissões são conferidas também pela API.
 
-A interface apresenta dashboard, busca client-side nos agregados, detalhamento, CSV e recomendações não destrutivas. **Incompleto / não validado para produção:** a API web não inicia porque `APP_ADMIN_PASSWORD` tem 8 caracteres; o seed do administrador ainda não rodou. Os endpoints de conteúdo/uploads foram compilados, mas não exercitados; a tela não está conectada à API nem tem fluxo de login e o upload fica desabilitado na prévia. Não há operações de exclusão/restauração nem execução confirmada de migração, filtros por tipo/tamanho/data na busca ou testes de integração. Os endpoints de análise de duplicados por hash e arquivos antigos aguardam validação funcional. Cinco testes unitários passaram para conversão JDBC, validação de nomes e assinatura/conteúdo de uploads. Migração por capacidade real não é segura enquanto só houver saldos importados. Não usar em produção até atualizar a senha, iniciar a API e validar os fluxos de conteúdo e segurança.
+## Cadastrar e manter
 
-O schema inicial e os endpoints incluem usuários com papéis, auditoria, metadados de itens e configurações. Nenhum binário real foi inferido a partir dos totais da planilha.
+Na Visão Geral, selecione um volume e use **Adicionar Backup**, ou abra **Backups** para cadastrar sem selecionar volume previamente. Preencha usuário/setor e volume; data textual, teste/status, tamanho e unidade são metadados opcionais. Em Backups, use os controles de edição ou exclusão. A exclusão pede confirmação e remove apenas o cadastro informativo. Inclusões, edições e exclusões registram ator autenticado, horário, ação e resultado no histórico.
+
+O histórico mostra eventos operacionais guardados pela API. Busca e relatórios trabalham com os cadastros informativos e dados de volume. Não existe fluxo de upload ou download.
+
+## API
+
+Rotas de cadastro protegidas por HTTP Basic e papéis existentes:
+
+- `GET /api/backups?volume={id}` — lista cadastros.
+- `POST /api/backups` — cria cadastro.
+- `PUT /api/backups/{id}` — edita cadastro.
+- `DELETE /api/backups/{id}` — exclui cadastro informativo.
+- `GET /api/history` — lista auditoria.
+- `GET /api/volumes` e `GET /api/reports` — dados de volume.
+
+Rotas de upload/download, gerenciamento de pastas e análises dependentes de binários foram removidas. V1–V5 não são reescritas; V6 é aditiva. Nenhum arquivo, linha legada ou dado de volume é apagado por esta mudança.
+
+## Limitações
+
+O frontend usa o snapshot versionado para a listagem de volumes; os cadastros e o histórico são lidos/escritos pela API. A interface precisa de uma API e um banco configurados e da autenticação válida para persistir alterações. Não há atribuição automática de cada agregado legado a um usuário além da informação textual originalmente registrada em `DADOS`.

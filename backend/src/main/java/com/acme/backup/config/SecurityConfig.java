@@ -9,8 +9,6 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -20,28 +18,37 @@ import java.util.List;
 @Configuration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
-    @Bean UserDetailsService userDetailsService(AppUserRepository users) {
+    @Bean
+    UserDetailsService userDetailsService(AppUserRepository users) {
         return username -> users.findByUsername(username)
-            .map(account -> User.withUsername(account.getUsername())
-                .password(account.getPasswordHash())
-                .roles(account.getRole())
-                .disabled(!account.isActive())
-                .build())
-            .orElseThrow(() -> new UsernameNotFoundException("Credenciais inválidas."));
+                .map(account -> User.withUsername(account.getUsername())
+                        .password(account.getPasswordHash())
+                        .roles(account.getRole())
+                        .disabled(!account.isActive())
+                        .build())
+                .orElseThrow(() -> new UsernameNotFoundException("Credenciais inválidas."));
     }
 
-    @Bean SecurityFilterChain securityFilterChain(org.springframework.security.config.annotation.web.builders.HttpSecurity http) throws Exception {
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            org.springframework.security.config.annotation.web.builders.HttpSecurity http) throws Exception {
         return http.cors(Customizer.withDefaults())
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/health").permitAll()
-                .requestMatchers("/api/users/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("ADMIN", "OPERATOR", "READER")
-                .requestMatchers(HttpMethod.POST, "/api/**").hasAnyRole("ADMIN", "OPERATOR")
-                .anyRequest().hasRole("ADMIN"))
-            .httpBasic(Customizer.withDefaults()).build();
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/volumes/*/uploads", "/api/volumes/*/items/**", "/api/volumes/*/folders")
+                        .denyAll()
+                        .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("ADMIN", "OPERATOR", "READER")
+                        .requestMatchers(HttpMethod.POST, "/api/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .anyRequest().hasRole("ADMIN"))
+                .httpBasic(Customizer.withDefaults()).build();
     }
 
-    @Bean CorsConfigurationSource corsConfigurationSource(@org.springframework.beans.factory.annotation.Value("${app.cors-origin}") String origin) {
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(
+            @org.springframework.beans.factory.annotation.Value("${app.cors-origin}") String origin) {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(origin));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

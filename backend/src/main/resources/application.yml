@@ -12,15 +12,7 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-  servlet:
-    multipart:
-      max-file-size: ${UPLOAD_MAX_FILE_SIZE:2GB}
-      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:4GB}
 app:
-  storage-root: ${BACKUP_STORAGE_ROOT:./var/backups}
-  upload:
-    max-file-bytes: ${UPLOAD_MAX_FILE_BYTES:2147483648}
-    allowed-extensions: ${UPLOAD_ALLOWED_EXTENSIONS:pdf,txt,csv,json,png,jpg,jpeg,zip,docx,xlsx,pptx,mp4,mp3,7z}
   cors-origin: ${CORS_ORIGIN:http://localhost:3000}
   security:
     seed-admin: ${APP_SECURITY_SEED_ADMIN:true}
