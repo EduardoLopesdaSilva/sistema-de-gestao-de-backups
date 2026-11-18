@@ -8,7 +8,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,6 +18,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/backups")
 public class BackupRecordController {
+    private static final String ACTOR = "acesso-direto";
     private final BackupRecordRepository records;
     private final BackupVolumeRepository volumes;
     private final AuditService audit;
@@ -38,36 +38,36 @@ public class BackupRecordController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public BackupRecord create(@Valid @RequestBody BackupRequest request, Authentication auth) {
+    public BackupRecord create(@Valid @RequestBody BackupRequest request) {
         requireVolume(request.volumeId());
         BackupRecord record = apply(new BackupRecord(), request);
         record.setId(UUID.randomUUID());
-        record.setCreatedBy(auth.getName());
+        record.setCreatedBy(ACTOR);
         records.save(record);
-        audit.record(auth.getName(), record.getVolumeId(), record.getId(), "BACKUP_CREATE", "SUCCESS", details(record));
+        audit.record(ACTOR, record.getVolumeId(), record.getId(), "BACKUP_CREATE", "SUCCESS", details(record));
         return record;
     }
 
     @PutMapping("/{id}")
     @Transactional
-    public BackupRecord update(@PathVariable UUID id, @Valid @RequestBody BackupRequest request, Authentication auth) {
+    public BackupRecord update(@PathVariable UUID id, @Valid @RequestBody BackupRequest request) {
         requireVolume(request.volumeId());
         BackupRecord record = require(id);
         apply(record, request);
         records.save(record);
-        audit.record(auth.getName(), record.getVolumeId(), id, "BACKUP_UPDATE", "SUCCESS", details(record));
+        audit.record(ACTOR, record.getVolumeId(), id, "BACKUP_UPDATE", "SUCCESS", details(record));
         return record;
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
-    public void delete(@PathVariable UUID id, Authentication auth) {
+    public void delete(@PathVariable UUID id) {
         BackupRecord record = require(id);
         Map<String, Object> snapshot = details(record);
         String volume = record.getVolumeId();
         records.delete(record);
-        audit.record(auth.getName(), volume, id, "BACKUP_DELETE", "SUCCESS", snapshot);
+        audit.record(ACTOR, volume, id, "BACKUP_DELETE", "SUCCESS", snapshot);
     }
 
     private BackupRecord require(UUID id) {
