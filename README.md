@@ -8,8 +8,10 @@ Frontend Next.js e API Spring Boot 3 / Java 21, PostgreSQL e migrações Flyway.
 
 - `DADOS` contém rótulo de usuário/setor (`usuario_setor`), data textual, teste/status e tamanho/unidade. Esses metadados permanecem textuais, como informados, vinculados ao volume correspondente.
 - `RESUMO` alimenta os indicadores por volume; os valores não são medições físicas.
-- `Planilha1` e `CONFERIR` permanecem preservadas no snapshot; referências sem vínculo inequívoco não foram atribuídas a pessoas.
-- V6 adiciona cadastros informativos sem alterar registros anteriores. A importação legada preserva origem e linha da planilha.
+- `Planilha1` acrescenta 191 identificadores informativos vinculados aos volumes indicados pelas seções, preservando tamanhos, células originais e metadados da seção. Identificadores `Id-*` não são tratados como nomes de pessoas.
+- `CONFERIR` acrescenta 7 cadastros relacionados aos volumes de destino, preservando referência antiga, referência nova, data ou observação e células originais.
+- A importação mantém os 181 registros de `DADOS`, corrige a associação das linhas marcadas `BADBLOCK NÃO FUNCIONA` ao volume BKP IMAGEM 12 e preserva esse rótulo como dado original. No total, são 379 registros informativos de backup além dos 26 volumes de `RESUMO`.
+- V6 cria os cadastros informativos e V8 adiciona metadados de origem em JSONB. O importador atualizado é idempotente, reconhece registros já existentes por aba e linha e preenche a associação/origem sem substituir os valores editáveis que já tenham sido alterados.
 - V1 é uma migração Flyway histórica e inclui a antiga tabela `app_user`. V7 remove essa tabela do banco. As migrações anteriores não são reescritas para evitar incompatibilidade de checksum.
 
 ## Executar
@@ -22,7 +24,7 @@ Não há tela de login, usuário padrão, senha, autenticação HTTP Basic ou pa
 
 ## Cadastro e manutenção
 
-Na Visão Geral, selecione um volume para abrir seus detalhes ou use a tela **Backups**. **Adicionar Backup** solicita usuário/setor e volume; data textual, teste/status, tamanho e unidade são opcionais. Os cadastros podem ser consultados, buscados, editados e excluídos. A exclusão pede confirmação e remove apenas o cadastro informativo.
+Na Visão Geral, selecione um volume para abrir seus detalhes ou use a tela **Backups**. **Adicionar Backup** solicita identificação/usuário/setor e volume; data textual, teste/status, tamanho e unidade são opcionais. Os metadados originais importados podem ser consultados em “Ver metadados originais”. Os cadastros podem ser consultados, buscados, editados e excluídos. A exclusão pede confirmação e remove apenas o cadastro informativo.
 
 O histórico registra data, ação, resultado e o ator `acesso-direto` para operações feitas sem autenticação. Os registros legados importados identificam a origem da planilha. A busca e os relatórios trabalham com cadastros informativos, não com arquivos físicos.
 

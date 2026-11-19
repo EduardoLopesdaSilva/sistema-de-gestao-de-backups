@@ -1,7 +1,10 @@
 package com.acme.backup.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -16,6 +19,7 @@ public class BackupRecord {
     private String unit;
     @Column(name = "source_sheet") private String sourceSheet;
     @Column(name = "source_row") private Integer sourceRow;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "source_details", columnDefinition = "jsonb") private Map<String, Object> sourceDetails;
     @Column(name = "created_by", nullable = false) private String createdBy;
     @Column(name = "created_at", insertable = false, updatable = false) private Instant createdAt;
     public BackupRecord() {}
@@ -28,6 +32,7 @@ public class BackupRecord {
     public String getUnit() { return unit; } public void setUnit(String v) { unit=v; }
     public String getSourceSheet() { return sourceSheet; } public void setSourceSheet(String v) { sourceSheet=v; }
     public Integer getSourceRow() { return sourceRow; } public void setSourceRow(Integer v) { sourceRow=v; }
+    public Map<String, Object> getSourceDetails() { return sourceDetails; } public void setSourceDetails(Map<String, Object> v) { sourceDetails=v; }
     public String getCreatedBy() { return createdBy; } public void setCreatedBy(String v) { createdBy=v; }
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -14,8 +14,6 @@ spring:
     enabled: true
 app:
   cors-origin: ${CORS_ORIGIN:http://localhost:3000}
-  security:
-    seed-admin: ${APP_SECURITY_SEED_ADMIN:true}
   free-space:
     warning-gb: ${FREE_SPACE_WARNING_GB:100}
     critical-gb: ${FREE_SPACE_CRITICAL_GB:20}
