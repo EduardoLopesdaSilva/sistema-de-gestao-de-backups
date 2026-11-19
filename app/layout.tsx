@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Vaultline | Gestão de backups',
-  description: 'Cadastro e consulta de informações sobre backups, sem envio de arquivos.',
+  title: 'Ease Confecções | Painel de backups',
+  description: 'Painel de controle para gerenciamento e inventário de backups da Ease Confecções. Cadastro e consulta de informações, sem envio de arquivos.',
   generator: 'v0.app',
 }
 
