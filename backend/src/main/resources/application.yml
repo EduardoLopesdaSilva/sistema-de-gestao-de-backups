@@ -4,6 +4,10 @@ server:
     include-message: never
     include-stacktrace: never
 spring:
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 20MB
   application:
     name: backup-control-api
   jpa:
@@ -13,6 +17,9 @@ spring:
   flyway:
     enabled: true
 app:
+  email-access:
+    access-token: ${EMAIL_ACCESS_TOKEN:}
+    encryption-key: ${EMAIL_ACCESS_ENCRYPTION_KEY:}
   cors-origin: ${CORS_ORIGIN:http://localhost:3000}
   free-space:
     warning-gb: ${FREE_SPACE_WARNING_GB:100}

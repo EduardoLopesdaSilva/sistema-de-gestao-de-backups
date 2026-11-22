@@ -20,7 +20,28 @@ Frontend Next.js e API Spring Boot 3 / Java 21, PostgreSQL e migrações Flyway.
 2. Inicie a API em `backend` com `mvn clean spring-boot:run`; Flyway aplica migrações pendentes, inclusive V7. O `clean` evita reutilizar classes antigas de conta em `target`.
 3. Configure `CORS_ORIGIN` para a origem do frontend (padrão `http://localhost:3000`) e execute `pnpm install` e `pnpm dev`. Se necessário, defina `NEXT_PUBLIC_API_URL`.
 
-Não há tela de login, usuário padrão, senha, autenticação HTTP Basic ou papéis. A API permite as operações diretamente. Qualquer pessoa ou serviço que consiga alcançar a API pode consultar, incluir, editar e excluir cadastros e consultar o histórico; CORS restringe navegadores pela origem, mas não é autenticação.
+O módulo de Backups não tem tela de login nem autenticação; qualquer pessoa ou serviço que alcance essa API pode consultar e alterar seus cadastros. O módulo **E-mails e Acessos** usa uma chave compartilhada própria e criptografa seus dados no banco.
+
+## E-mails e Acessos
+
+O módulo tem oito categorias de CRUD: E-mails Principais (abas `E-mail` e `Inativos`), Office 365, Skype, Redirecionamentos, Gerentes, Contas Gmail/Outlook, Celulares/Tablets e Lavanderia. As duas planilhas de encaminhamentos são normalizadas para DE → PARA e pares duplicados são consolidados. Os dados em células coloridas da planilha Cpanel viram tags especiais. Linhas vazias são ignoradas.
+
+As oito planilhas não são copiadas para o repositório. Na tela **E-mails e Acessos**, use **Importar planilhas** e selecione os oito arquivos `.xlsx` de uma só vez. O importador valida nomes e abas, registra um hash por arquivo e não repete um arquivo já importado. Os conteúdos ficam criptografados com AES-256-GCM antes de serem salvos; a chave de criptografia não é armazenada no banco.
+
+Configure duas variáveis secretas no ambiente do backend antes de iniciar a API. Para desenvolvimento local, gere os valores uma única vez e mantenha-os no perfil Windows do usuário (ou em um gerenciador de segredos):
+
+```powershell
+$token = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$encryptionKey = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+[Environment]::SetEnvironmentVariable('EMAIL_ACCESS_TOKEN', $token, 'User')
+[Environment]::SetEnvironmentVariable('EMAIL_ACCESS_ENCRYPTION_KEY', $encryptionKey, 'User')
+$env:EMAIL_ACCESS_TOKEN = $token
+$env:EMAIL_ACCESS_ENCRYPTION_KEY = $encryptionKey
+```
+
+Em novos terminais, carregue os mesmos valores com `$env:EMAIL_ACCESS_TOKEN = [Environment]::GetEnvironmentVariable('EMAIL_ACCESS_TOKEN', 'User')` e `$env:EMAIL_ACCESS_ENCRYPTION_KEY = [Environment]::GetEnvironmentVariable('EMAIL_ACCESS_ENCRYPTION_KEY', 'User')`. Mantenha a chave de criptografia em um gerenciador seguro e não gere outra depois de importar dados: perdê-la impede a descriptografia dos registros. Inicie a API no mesmo terminal e cole o valor de `$env:EMAIL_ACCESS_TOKEN` no painel de desbloqueio. O token é mantido apenas na memória da página. A API rejeita chamadas ao módulo sem o token e permanece fechada se o token ou a chave de criptografia não estiverem configurados corretamente.
+
+As tabelas mascaram senhas e oferecem ações para revelar ou copiar. O filtro de busca exclui campos de senha. As operações de CRUD e importação não registram valores de credenciais no histórico.
 
 ## Cadastro e manutenção
 
