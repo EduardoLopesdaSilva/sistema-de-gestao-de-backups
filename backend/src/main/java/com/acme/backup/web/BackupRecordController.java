@@ -7,6 +7,7 @@ import com.acme.backup.service.AuditService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.LocalDate;
+import java.math.BigDecimal;
+import jakarta.validation.constraints.DecimalMin;
 
 @RestController
 @RequestMapping("/api/backups")
@@ -53,6 +57,7 @@ public class BackupRecordController {
     public BackupRecord update(@PathVariable UUID id, @Valid @RequestBody BackupRequest request) {
         requireVolume(request.volumeId());
         BackupRecord record = require(id);
+        requireEditable(record);
         apply(record, request);
         records.save(record);
         audit.record(ACTOR, record.getVolumeId(), id, "BACKUP_UPDATE", "SUCCESS", details(record));
@@ -64,6 +69,7 @@ public class BackupRecordController {
     @Transactional
     public void delete(@PathVariable UUID id) {
         BackupRecord record = require(id);
+        requireEditable(record);
         Map<String, Object> snapshot = details(record);
         String volume = record.getVolumeId();
         records.delete(record);
@@ -83,23 +89,29 @@ public class BackupRecordController {
     private static BackupRecord apply(BackupRecord r, BackupRequest q) {
         r.setVolumeId(q.volumeId());
         r.setUsuarioSetor(q.usuarioSetor().trim());
-        r.setCreatedText(q.createdText());
+        r.setCreatedDate(q.createdDate());
         r.setTestStatus(q.testStatus());
-        r.setSizeText(q.sizeText());
+        r.setSizeValue(q.sizeValue());
         r.setUnit(q.unit());
         return r;
     }
 
     private static Map<String, Object> details(BackupRecord r) {
         return Map.of("usuario_setor", r.getUsuarioSetor(), "volumeId", r.getVolumeId(), "data",
-                r.getCreatedText() == null ? "" : r.getCreatedText(), "status",
+                r.getCreatedDate() == null ? "" : r.getCreatedDate().toString(), "status",
                 r.getTestStatus() == null ? "" : r.getTestStatus(), "tamanho",
-                r.getSizeText() == null ? "" : r.getSizeText(), "unidade", r.getUnit() == null ? "" : r.getUnit());
+                r.getSizeValue() == null ? "" : r.getSizeValue().toPlainString(), "unidade", r.getUnit() == null ? "" : r.getUnit());
+    }
+
+    private static void requireEditable(BackupRecord record) {
+        if (record.isBlocked()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Este registro está protegido e não pode ser alterado ou excluído.");
     }
 
     public record BackupRequest(@NotBlank @Size(max = 80) String volumeId,
             @NotBlank @Size(max = 255) String usuarioSetor,
-            @Size(max = 120) String createdText, @Size(max = 2000) String testStatus, @Size(max = 100) String sizeText,
-            @Size(max = 32) String unit) {
+            LocalDate createdDate,
+            @NotBlank @Pattern(regexp = "CONFERIDO|PENDENTE|COM ERRO") String testStatus,
+            @DecimalMin(value = "0.0", inclusive = true) BigDecimal sizeValue,
+            @NotBlank @Pattern(regexp = "KB|MB|GB|TB") String unit) {
     }
 }

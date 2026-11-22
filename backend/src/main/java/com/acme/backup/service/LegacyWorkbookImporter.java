@@ -1,238 +1,215 @@
 package com.acme.backup.service;
 
-import com.acme.backup.domain.BackupVolume;
-import com.acme.backup.domain.LegacyItem;
-import com.acme.backup.domain.ImportRun;
 import com.acme.backup.domain.BackupRecord;
 import com.acme.backup.domain.BackupRecordImport;
-import com.acme.backup.repository.BackupRecordRepository;
+import com.acme.backup.domain.BackupVolume;
 import com.acme.backup.repository.BackupRecordImportRepository;
+import com.acme.backup.repository.BackupRecordRepository;
 import com.acme.backup.repository.BackupVolumeRepository;
-import com.acme.backup.repository.ImportRunRepository;
-import com.acme.backup.repository.LegacyItemRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFCell;
+import org.apache.poi.xssf.usermodel.XSSFFont;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
-import java.util.Map;
 import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class LegacyWorkbookImporter implements ApplicationRunner {
-    private final ObjectMapper mapper;
-    private final BackupVolumeRepository volumes;
-    private final LegacyItemRepository items;
-    private final ImportRunRepository imports;
-    private final AuditService audit;
-    private final BackupRecordRepository backupRecords;
-    private final BackupRecordImportRepository recordImports;
+    private static final Pattern IMAGE_VOLUME = Pattern.compile("(?i)^BKP IMAGEM (\\d{2})$");
+    private static final Pattern CAPACITY = Pattern.compile("(?i)HD\\s*([0-9.,]+)\\s*GB");
+    private static final Pattern OCCUPIED = Pattern.compile("(?i)Espaço\\s+Total\\s+Ocupado:?\\s*([0-9.,]+)");
+    private static final Pattern FREE = Pattern.compile("(?i)Espaço\\s+Atual:?\\s*([0-9.,]+)");
+    private static final List<DateTimeFormatter> DATE_FORMATS = List.of(
+            DateTimeFormatter.ofPattern("d/M/uuuu"), DateTimeFormatter.ofPattern("d/M/uu"),
+            DateTimeFormatter.ofPattern("M/d/uuuu"), DateTimeFormatter.ofPattern("M/d/uu"),
+            DateTimeFormatter.ISO_LOCAL_DATE);
 
-    public LegacyWorkbookImporter(ObjectMapper mapper, BackupVolumeRepository volumes, LegacyItemRepository items,
-            ImportRunRepository imports, AuditService audit, BackupRecordRepository backupRecords,
-            BackupRecordImportRepository recordImports) {
-        this.mapper = mapper;
+    private final BackupVolumeRepository volumes;
+    private final BackupRecordRepository records;
+    private final BackupRecordImportRepository imports;
+    private final AuditService audit;
+
+    public LegacyWorkbookImporter(BackupVolumeRepository volumes, BackupRecordRepository records,
+            BackupRecordImportRepository imports, AuditService audit) {
         this.volumes = volumes;
-        this.items = items;
+        this.records = records;
         this.imports = imports;
         this.audit = audit;
-        this.backupRecords = backupRecords;
-        this.recordImports = recordImports;
     }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) throws IOException {
         byte[] source;
-        try (var stream = new ClassPathResource("import/legacy-workbook.json").getInputStream()) {
+        try (var stream = new ClassPathResource("import/Controle-Dos-Backups-Copia.xlsx").getInputStream()) {
             source = stream.readAllBytes();
         }
         String checksum = sha256(source);
-        JsonNode root = mapper.readTree(source);
+        if (imports.existsById(checksum)) return;
+
         int volumeCount = 0;
-        int itemCount = 0;
-        boolean workbookAlreadyImported = imports.existsBySourceChecksum(checksum);
-        if (!workbookAlreadyImported)
-            for (JsonNode row : root.path("volumes")) {
-                String id = text(row, "id");
-                BackupVolume volume = volumes.findById(id).orElseGet(BackupVolume::new);
-                volume.setId(id);
-                volume.setName(text(row, "name"));
-                volume.setCapacityGb(decimal(row, "capacityGb"));
-                volume.setOccupiedGb(decimal(row, "occupiedGb"));
-                volume.setReportedFreeGb(decimal(row, "freeGb"));
-                volume.setNote(text(row, "note"));
-                volume.setMeasurementSource("IMPORTADO: RESUMO");
-                volumes.save(volume);
-                volumeCount++;
+        int recordCount = 0;
+        Map<String, String> volumeIds = new HashMap<>();
+        DataFormatter formatter = new DataFormatter(new Locale("pt", "BR"));
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(source))) {
+            Sheet dados = workbook.getSheet("DADOS");
+            if (dados == null) throw new IllegalStateException("A aba DADOS não existe na planilha de importação.");
+            for (Row row : dados) {
+                String volumeName = text(row, 0, formatter);
+                String user = text(row, 1, formatter).trim();
+                String dateOrHeader = text(row, 2, formatter);
+
+                Matcher image = IMAGE_VOLUME.matcher(volumeName);
+                Matcher capacity = CAPACITY.matcher(user);
+                if (image.matches() && capacity.find() && dateOrHeader.toLowerCase(Locale.ROOT).contains("espaço total ocupado")) {
+                    int number = Integer.parseInt(image.group(1));
+                    if (number > 13) continue;
+                    String id = "vol-" + number;
+                    BackupVolume volume = volumes.findById(id).orElseGet(BackupVolume::new);
+                    volume.setId(id);
+                    volume.setName(volumeName);
+                    volume.setCapacityGb(decimal(capacity.group(1)));
+                    volume.setOccupiedGb(capture(OCCUPIED, dateOrHeader));
+                    volume.setReportedFreeGb(capture(FREE, text(row, 3, formatter)));
+                    volume.setNote(null);
+                    volume.setMeasurementSource("IMPORTADO: DADOS");
+                    volumes.save(volume);
+                    volumeIds.put(volumeName, id);
+                    volumeCount++;
+                    continue;
+                }
+
+                if (volumeName.equalsIgnoreCase("BADBLOCK NÃO FUNCIONA")) {
+                    String id = "vol-badblock";
+                    BackupVolume volume = volumes.findById(id).orElseGet(BackupVolume::new);
+                    volume.setId(id);
+                    volume.setName("BADBLOCK NÃO FUNCIONA");
+                    volume.setCapacityGb(null);
+                    volume.setOccupiedGb(null);
+                    volume.setReportedFreeGb(null);
+                    volume.setNote("Unidade não funciona");
+                    volume.setMeasurementSource("IMPORTADO: DADOS");
+                    volumes.save(volume);
+                    volumeIds.put(volume.getName(), id);
+                    volumeCount++;
+                }
+
+                if (user.isBlank() || volumeName.isBlank()) continue;
+                String volumeId = volumeIds.get(volumeName);
+                if (volumeId == null) continue;
+
+                int sourceRow = row.getRowNum() + 1;
+                BackupRecord record = records.findBySourceSheetAndSourceRow("DADOS", sourceRow)
+                        .orElseGet(BackupRecord::new);
+                boolean fresh = record.getId() == null;
+                if (fresh) {
+                    record.setId(UUID.nameUUIDFromBytes(("DADOS:" + sourceRow).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    record.setCreatedBy("importação legada");
+                }
+                record.setVolumeId(volumeId);
+                record.setUsuarioSetor(user);
+                record.setCreatedDate(date(row.getCell(2), formatter));
+                record.setTestStatus(status(text(row, 3, formatter)));
+                record.setSizeValue(decimalValue(text(row, 4, formatter)));
+                String unit = text(row, 5, formatter).trim().toUpperCase(Locale.ROOT);
+                record.setUnit(List.of("KB", "MB", "GB", "TB").contains(unit) ? unit : "GB");
+                record.setBlocked(isRed(row.getCell(1), workbook));
+                record.setSourceSheet("DADOS");
+                record.setSourceRow(sourceRow);
+                record.setSourceDetails(sourceDetails(row, formatter));
+                records.save(record);
+                if (fresh) recordCount++;
             }
-        if (!workbookAlreadyImported)
-            for (JsonNode row : root.path("legacyItems")) {
-                String id = text(row, "id");
-                LegacyItem item = items.findById(id).orElseGet(LegacyItem::new);
-                item.setId(id);
-                item.setVolumeName(text(row, "volume"));
-                item.setLabel(text(row, "owner"));
-                item.setCreatedText(text(row, "created"));
-                item.setTestStatus(text(row, "status"));
-                item.setSizeText(text(row, "amount"));
-                item.setUnit(text(row, "unit"));
-                item.setSourceSheet("DADOS");
-                item.setSourceRow(row.path("sourceRow").asInt());
-                item.setKind("LEGACY_AGGREGATE");
-                items.save(item);
-                itemCount++;
-            }
-        if (!workbookAlreadyImported) {
-            ImportRun run = new ImportRun();
-            run.setId(UUID.randomUUID());
-            run.setSourceChecksum(checksum);
-            run.setSourceName(text(root, "workbook"));
-            run.setOutcome("SUCCESS");
-            run.setImportedVolumes(volumeCount);
-            run.setImportedItems(itemCount);
-            imports.save(run);
-            audit.record("system", null, null, "IMPORT", "SUCCESS",
-                    Map.of("source", run.getSourceName(), "sha256", checksum, "volumes", volumeCount, "items",
-                            itemCount));
         }
-        var volumeIds = volumes.findAllByOrderByNameAsc().stream()
-                .collect(java.util.stream.Collectors.toMap(BackupVolume::getName, BackupVolume::getId));
-        String expandedChecksum = sha256((checksum + ":ALL_WORKSHEETS_V1").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        if (!recordImports.existsById(expandedChecksum)) {
-            int imported = importDados(root, volumeIds);
-            imported += importPlanilha1(root, volumeIds);
-            imported += importConferir(root, volumeIds);
-            BackupRecordImport marker = new BackupRecordImport();
-            marker.setSourceChecksum(expandedChecksum);
-            marker.setImportedRecords(imported);
-            recordImports.save(marker);
-            audit.record("system", null, null, "BACKUP_RECORD_IMPORT", "SUCCESS",
-                    Map.of("source", text(root, "workbook"), "records", imported, "sheets", List.of("DADOS", "Planilha1", "CONFERIR")));
-        }
+
+        BackupRecordImport marker = new BackupRecordImport();
+        marker.setSourceChecksum(checksum);
+        marker.setImportedRecords(recordCount);
+        imports.save(marker);
+        audit.record("system", null, null, "BACKUP_RECORD_IMPORT", "SUCCESS",
+                Map.of("source", "Controle-Dos-Backups-Copia.xlsx", "sheet", "DADOS",
+                        "records", recordCount, "volumes", volumeCount));
     }
 
-    private int importDados(JsonNode root, Map<String, String> volumeIds) {
-        int count = 0;
-        for (JsonNode row : root.path("legacyItems")) {
-            int sourceRow = row.path("sourceRow").asInt();
-            JsonNode raw = root.path("sheets").path("DADOS").path("rows").path(sourceRow - 1);
-            String sourceVolume = raw.path(0).asText(text(row, "volume"));
-            // The sheet uses BADBLOCK NÃO FUNCIONA in the volume column for records below BKP IMAGEM 12.
-            if ("BADBLOCK NÃO FUNCIONA".equalsIgnoreCase(sourceVolume)) sourceVolume = "BKP IMAGEM 12";
-            String volumeId = volumeIds.get(sourceVolume);
-            if (volumeId == null) throw new IllegalStateException("Volume de DADOS não encontrado na planilha: " + sourceVolume + " (linha " + sourceRow + ")");
-            BackupRecord record = backupRecords.findBySourceSheetAndSourceRow("DADOS", sourceRow).orElseGet(BackupRecord::new);
-            boolean fresh = record.getId() == null;
-            if (fresh) {
-                record.setId(UUID.nameUUIDFromBytes(("DADOS:" + sourceRow).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-                record.setUsuarioSetor(text(row, "owner"));
-                if (record.getUsuarioSetor().isBlank()) record.setUsuarioSetor("Não informado");
-                record.setCreatedText(text(row, "created"));
-                record.setTestStatus(text(row, "status"));
-                record.setSizeText(text(row, "amount"));
-                record.setUnit(text(row, "unit"));
-                record.setCreatedBy("importação legada");
-                count++;
-            }
-            record.setVolumeId(volumeId);
-            record.setSourceSheet("DADOS");
-            record.setSourceRow(sourceRow);
-            if (record.getSourceDetails() == null) record.setSourceDetails(sourceDetails(raw, null));
-            backupRecords.save(record);
+    private static boolean isRed(Cell cell, Workbook workbook) {
+        if (cell == null) return false;
+        Font font = workbook.getFontAt(cell.getCellStyle().getFontIndexAsInt());
+        if (!(font instanceof XSSFFont xssfFont) || xssfFont.getXSSFColor() == null) return false;
+        byte[] rgb = xssfFont.getXSSFColor().getRGB();
+        if (rgb == null || rgb.length < 3) return false;
+        int red = rgb[rgb.length - 3] & 0xff;
+        int green = rgb[rgb.length - 2] & 0xff;
+        int blue = rgb[rgb.length - 1] & 0xff;
+        return red >= 128 && red > green * 1.35 && red > blue * 1.35;
+    }
+
+    private static Map<String, Object> sourceDetails(Row row, DataFormatter formatter) {
+        Map<String, Object> values = new HashMap<>();
+        for (int column = 0; column < 6; column++) values.put("coluna" + (column + 1), text(row, column, formatter));
+        return values;
+    }
+
+    private static LocalDate date(Cell cell, DataFormatter formatter) {
+        if (cell == null || cell.getCellType() == CellType.BLANK) return null;
+        if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell))
+            return cell.getDateCellValue().toInstant().atZone(ZoneOffset.UTC).toLocalDate();
+        String value = formatter.formatCellValue(cell).trim();
+        for (DateTimeFormatter format : DATE_FORMATS) {
+            try { return LocalDate.parse(value, format); } catch (DateTimeParseException ignored) { }
         }
-        return count;
+        return null;
     }
 
-    private int importPlanilha1(JsonNode root, Map<String, String> volumeIds) {
-        int count = 0;
-        String activeVolume = null;
-        JsonNode activeSection = null;
-        JsonNode rows = root.path("sheets").path("Planilha1").path("rows");
-        for (int i = 0; i < rows.size(); i++) {
-            JsonNode row = rows.get(i);
-            String first = cell(row, 0).trim();
-            if (volumeIds.containsKey(first)) { activeVolume = first; activeSection = row; continue; }
-            if (!first.matches("(?i)Id-.+") ) continue;
-            if (activeVolume == null) throw new IllegalStateException("Identificador sem volume em Planilha1, linha " + (i + 1));
-            BackupRecord record = backupRecords.findBySourceSheetAndSourceRow("Planilha1", i + 1).orElseGet(BackupRecord::new);
-            if (record.getId() != null) continue;
-            record.setId(UUID.nameUUIDFromBytes(("Planilha1:" + (i + 1)).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            record.setVolumeId(volumeIds.get(activeVolume));
-            record.setUsuarioSetor(first);
-            record.setSizeText(cell(row, 4));
-            record.setUnit(record.getSizeText().isBlank() ? "" : embeddedUnit(record.getSizeText()));
-            record.setSourceSheet("Planilha1"); record.setSourceRow(i + 1); record.setCreatedBy("importação legada");
-            Map<String, Object> details = new HashMap<>(); details.put("volumeSecao", activeVolume); details.put("idInformativo", first);
-            details.put("metadadosVolumeSecao", sourceDetails(activeSection, null).get("celulasOriginais"));
-            record.setSourceDetails(sourceDetails(row, details));
-            backupRecords.save(record); count++;
-        }
-        return count;
+    private static String status(String value) {
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isBlank() || normalized.contains("NÃO FEITO") || normalized.contains("PENDENTE")) return "PENDENTE";
+        if (normalized.contains("ERRO")) return "COM ERRO";
+        if (normalized.contains("CONFERIDO") || normalized.equals("FEITO") || normalized.contains("COMPLETO")) return "CONFERIDO";
+        return "PENDENTE";
     }
 
-    private int importConferir(JsonNode root, Map<String, String> volumeIds) {
-        int count = 0;
-        JsonNode rows = root.path("sheets").path("CONFERIR").path("rows");
-        for (int i = 1; i < rows.size(); i++) {
-            JsonNode row = rows.get(i);
-            String target = cell(row, 2).replaceFirst("(?i)^VIROU\\s+", "").trim();
-            if (target.isBlank()) continue;
-            String volumeId = volumeIds.get(target);
-            if (volumeId == null) throw new IllegalStateException("Volume de destino não encontrado em CONFERIR, linha " + (i + 1) + ": " + target);
-            BackupRecord record = backupRecords.findBySourceSheetAndSourceRow("CONFERIR", i + 1).orElseGet(BackupRecord::new);
-            if (record.getId() != null) continue;
-            record.setId(UUID.nameUUIDFromBytes(("CONFERIR:" + (i + 1)).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            record.setVolumeId(volumeId); record.setUsuarioSetor(cell(row, 0).trim());
-            record.setSizeText(cell(row, 3)); record.setUnit(cell(row, 4));
-            String dateOrNote = cell(row, 5);
-            if (dateOrNote.matches("\\d{1,2}/\\d{1,2}/\\d{4}")) record.setCreatedText(dateOrNote);
-            record.setTestStatus(""); record.setSourceSheet("CONFERIR"); record.setSourceRow(i + 1); record.setCreatedBy("importação legada");
-            Map<String, Object> details = new HashMap<>(); details.put("arquivoAntigo", cell(row, 1)); details.put("arquivoNovo", cell(row, 2)); details.put("dataOuObservacao", dateOrNote); details.put("volumeDestino", target);
-            record.setSourceDetails(sourceDetails(row, details)); backupRecords.save(record); count++;
-        }
-        return count;
+    private static BigDecimal decimalValue(String value) {
+        String numeric = value.trim().replaceAll("(?i)\\s*(GB|MB|KB|TB)$", "").replace(',', '.');
+        try { return new BigDecimal(numeric); }
+        catch (NumberFormatException ignored) { return null; }
     }
 
-    private Map<String, Object> sourceDetails(JsonNode row, Map<String, ?> extra) {
-        Map<String, Object> details = new HashMap<>();
-        List<String> cells = new ArrayList<>(); row.forEach(value -> cells.add(value.isNull() ? "" : value.asText()));
-        details.put("celulasOriginais", cells);
-        if (extra != null) details.putAll(extra);
-        return details;
+    private static BigDecimal capture(Pattern pattern, String value) {
+        Matcher matcher = pattern.matcher(value);
+        return matcher.find() ? decimal(matcher.group(1)) : null;
     }
 
-    private static String cell(JsonNode row, int index) { JsonNode value = row.path(index); return value.isMissingNode() || value.isNull() ? "" : value.asText().trim(); }
-    private static String embeddedUnit(String size) { return size.toUpperCase().matches(".*(?:GB|MB|KB)$") ? size.replaceAll("^[0-9,. ]+", "").trim() : "GB"; }
+    private static BigDecimal decimal(String value) {
+        try { return new BigDecimal(value.replace(',', '.')); } catch (NumberFormatException ignored) { return BigDecimal.ZERO; }
+    }
+
+    private static String text(Row row, int column, DataFormatter formatter) {
+        if (row == null || row.getCell(column) == null) return "";
+        return formatter.formatCellValue(row.getCell(column)).trim();
+    }
 
     private static String sha256(byte[] content) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 indisponível.", exception);
-        }
-    }
-
-    private static String text(JsonNode node, String key) {
-        JsonNode value = node.get(key);
-        return value == null || value.isNull() ? "" : value.asText();
-    }
-
-    private static BigDecimal decimal(JsonNode node, String key) {
-        try {
-            return new BigDecimal(text(node, key).replace(',', '.'));
-        } catch (NumberFormatException ex) {
-            return BigDecimal.ZERO;
-        }
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content)); }
+        catch (Exception ex) { throw new IllegalStateException("SHA-256 indisponível.", ex); }
     }
 }
