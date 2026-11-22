@@ -18,11 +18,11 @@ import java.util.UUID;
 import java.time.LocalDate;
 import java.math.BigDecimal;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/backups")
 public class BackupRecordController {
-    private static final String ACTOR = "acesso-direto";
     private final BackupRecordRepository records;
     private final BackupVolumeRepository volumes;
     private final AuditService audit;
@@ -42,38 +42,45 @@ public class BackupRecordController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public BackupRecord create(@Valid @RequestBody BackupRequest request) {
+    public BackupRecord create(@Valid @RequestBody BackupRequest request, HttpServletRequest httpRequest) {
         requireVolume(request.volumeId());
+        String actor = actor(httpRequest);
         BackupRecord record = apply(new BackupRecord(), request);
         record.setId(UUID.randomUUID());
-        record.setCreatedBy(ACTOR);
+        record.setCreatedBy(actor);
         records.save(record);
-        audit.record(ACTOR, record.getVolumeId(), record.getId(), "BACKUP_CREATE", "SUCCESS", details(record));
+        audit.record(actor, record.getVolumeId(), record.getId(), "BACKUP_CREATE", "SUCCESS", details(record));
         return record;
     }
 
     @PutMapping("/{id}")
     @Transactional
-    public BackupRecord update(@PathVariable UUID id, @Valid @RequestBody BackupRequest request) {
+    public BackupRecord update(@PathVariable UUID id, @Valid @RequestBody BackupRequest request, HttpServletRequest httpRequest) {
         requireVolume(request.volumeId());
+        String actor = actor(httpRequest);
         BackupRecord record = require(id);
         requireEditable(record);
         apply(record, request);
         records.save(record);
-        audit.record(ACTOR, record.getVolumeId(), id, "BACKUP_UPDATE", "SUCCESS", details(record));
+        audit.record(actor, record.getVolumeId(), id, "BACKUP_UPDATE", "SUCCESS", details(record));
         return record;
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
-    public void delete(@PathVariable UUID id) {
+    public void delete(@PathVariable UUID id, HttpServletRequest httpRequest) {
+        String actor = actor(httpRequest);
         BackupRecord record = require(id);
         requireEditable(record);
         Map<String, Object> snapshot = details(record);
         String volume = record.getVolumeId();
         records.delete(record);
-        audit.record(ACTOR, volume, id, "BACKUP_DELETE", "SUCCESS", snapshot);
+        audit.record(actor, volume, id, "BACKUP_DELETE", "SUCCESS", snapshot);
+    }
+
+    private static String actor(HttpServletRequest request) {
+        return (String) request.getSession(false).getAttribute(AuthController.SESSION_USER);
     }
 
     private BackupRecord require(UUID id) {

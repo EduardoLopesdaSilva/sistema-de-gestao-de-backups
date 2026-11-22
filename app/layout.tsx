@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Ease Confecções | Backups e Acessos',
-  description: 'Painel de controle para gerenciamento de backups, e-mails e acessos da Ease Confecções.',
+  description: 'Painel autenticado para gerenciamento de backups, e-mails e acessos da Ease Confecções.',
   generator: 'v0.app',
 }
 

@@ -1,5 +1,12 @@
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: strict
   error:
     include-message: never
     include-stacktrace: never
@@ -17,8 +24,9 @@ spring:
   flyway:
     enabled: true
 app:
+  auth:
+    initial-password: "${AUTH_INITIAL_PASSWORD:ease.123#}"
   email-access:
-    access-token: ${EMAIL_ACCESS_TOKEN:}
     encryption-key: ${EMAIL_ACCESS_ENCRYPTION_KEY:}
   cors-origin: ${CORS_ORIGIN:http://localhost:3000}
   free-space:

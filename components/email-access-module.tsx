@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from 'react'
-import { Check, Copy, Eye, EyeOff, FileSpreadsheet, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Trash2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Check, Copy, Eye, EyeOff, FileSpreadsheet, LockKeyhole, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 
 type Category = 'EMAIL_MAIN' | 'OFFICE365' | 'SKYPE' | 'REDIRECTS' | 'MANAGERS' | 'EXTERNAL_ACCOUNTS' | 'DEVICES' | 'LAUNDRY'
 type Field = { key: string; label: string; secret?: boolean; required?: boolean; kind?: 'active' | 'tag' }
@@ -46,9 +47,7 @@ const TAGS = ['Inativar', 'Incluir', 'Não Mexer', 'Filial']
 const blank = (fields: Field[]) => Object.fromEntries(fields.map(field => [field.key, field.key === 'active' ? 'Sim' : ''])) as Record<string, string>
 
 export function EmailAccessModule() {
-  const [tokenInput, setTokenInput] = useState('')
-  const [token, setToken] = useState('')
-  const [authorized, setAuthorized] = useState(false)
+  const router = useRouter()
   const [category, setCategory] = useState<Category>('EMAIL_MAIN')
   const [records, setRecords] = useState<Entry[]>([])
   const [query, setQuery] = useState('')
@@ -62,26 +61,22 @@ export function EmailAccessModule() {
   const fileRef = useRef<HTMLInputElement>(null)
   const current = categories.find(item => item.key === category)!
 
-  async function request(path: string, init: RequestInit = {}, accessToken = token) {
+  async function request(path: string, init: RequestInit = {}) {
     const isForm = typeof FormData !== 'undefined' && init.body instanceof FormData
     const headers = new Headers(init.headers)
-    headers.set('X-Email-Access-Token', accessToken)
     if (!isForm && init.body) headers.set('Content-Type', 'application/json')
-    const response = await fetch(`${api}${path}`, { ...init, headers })
+    const response = await fetch(`${api}${path}`, { ...init, credentials: 'include', headers })
     if (!response.ok) {
-      if (response.status === 401) setAuthorized(false)
-      if (response.status === 503) throw new Error('O backend precisa de EMAIL_ACCESS_TOKEN e EMAIL_ACCESS_ENCRYPTION_KEY configurados.')
-      throw new Error(response.status === 401 ? 'Chave de acesso incorreta.' : `Falha na API (${response.status}).`)
+      if (response.status === 401) router.replace('/login')
+      throw new Error(response.status === 401 ? 'Sessão expirada. Faça login novamente.' : `Falha na API (${response.status}).`)
     }
     return response.status === 204 ? null : response.json()
   }
 
-  async function refresh(nextCategory = category, accessToken = token) {
-    if (!accessToken) return
+  async function refresh(nextCategory = category) {
     try {
-      const result = await request(`/api/email-access?category=${encodeURIComponent(nextCategory)}`, {}, accessToken)
+      const result = await request(`/api/email-access?category=${encodeURIComponent(nextCategory)}`)
       setRecords(result)
-      setAuthorized(true)
       setError('')
     } catch (cause) {
       setRecords([])
@@ -89,7 +84,7 @@ export function EmailAccessModule() {
     }
   }
 
-  useEffect(() => { if (authorized) void refresh(category) }, [authorized, category])
+  useEffect(() => { void refresh(category) }, [category])
 
   const filtered = useMemo(() => {
     const text = query.trim().toLocaleLowerCase('pt-BR')
@@ -104,13 +99,6 @@ export function EmailAccessModule() {
   const credentialCount = records.filter(record => secretFields.some(field => record.fields[field.key])).length
   const contactCount = records.filter(record => Object.entries(record.fields).some(([key, value]) => /email|cpanel|office365/i.test(key) && Boolean(value))).length
 
-  function unlock(event: FormEvent) {
-    event.preventDefault()
-    setError('')
-    setToken(tokenInput)
-    void refresh(category, tokenInput)
-  }
-  function lockModule() { setAuthorized(false); setToken(''); setTokenInput(''); setRecords([]); setVisible({}); setQuery('') }
   function startCreate() { setEditing(null); setForm(blank(current.fields)); setDialog(true); setError('') }
   function startEdit(record: Entry) { setEditing(record); setForm({ ...blank(current.fields), ...record.fields }); setDialog(true); setError('') }
 
@@ -155,18 +143,8 @@ export function EmailAccessModule() {
     catch { setError('O navegador não permitiu copiar para a área de transferência.') }
   }
 
-  if (!authorized) return <section className="panel access-lock-panel">
-    <div className="module-title"><span className="module-icon"><LockKeyhole size={20}/></span><div><h2>E-mails e Acessos</h2><p>Informe a chave de acesso configurada no backend para abrir as credenciais.</p></div></div>
-    <form className="backup-form access-unlock" onSubmit={unlock}>
-      <label>Chave de acesso<input type="password" autoComplete="current-password" value={tokenInput} onChange={event => setTokenInput(event.target.value)} required/></label>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="button primary" disabled={busy || !tokenInput}>Abrir módulo</button>
-      <p className="security-note"><ShieldCheck size={15}/> Os dados são criptografados no banco. Configure <code>EMAIL_ACCESS_TOKEN</code> e <code>EMAIL_ACCESS_ENCRYPTION_KEY</code> no backend.</p>
-    </form>
-  </section>
-
   return <>
-    <div className="page-heading email-page-heading"><div><div className="eyebrow"><span className="eyebrow-dot"/>GERENCIAMENTO DE CONTAS</div><h1>E-mails e Acessos</h1><p>Credenciais protegidas, com visualização mascarada e controle de acesso.</p></div><div className="heading-actions"><input ref={fileRef} className="visually-hidden" type="file" accept=".xlsx" multiple onChange={importFiles}/><button className="button secondary" onClick={() => fileRef.current?.click()} disabled={busy}><FileSpreadsheet size={15}/> Importar planilhas</button><button className="button secondary" onClick={lockModule}><LockKeyhole size={14}/> Bloquear</button><button className="button primary" onClick={startCreate}><Plus size={16}/> Adicionar</button></div></div>
+    <div className="page-heading email-page-heading"><div><div className="eyebrow"><span className="eyebrow-dot"/>GERENCIAMENTO DE CONTAS</div><h1>E-mails e Acessos</h1><p>Credenciais protegidas, com visualização mascarada e controle de acesso.</p></div><div className="heading-actions"><input ref={fileRef} className="visually-hidden" type="file" accept=".xlsx" multiple onChange={importFiles}/><button className="button secondary" onClick={() => fileRef.current?.click()} disabled={busy}><FileSpreadsheet size={15}/> Importar planilhas</button><button className="button primary" onClick={startCreate}><Plus size={16}/> Adicionar</button></div></div>
     {notice && <div className="notice" role="status"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={16}/></button></div>}
     {error && <div className="notice module-error" role="alert"><span>{error}</span><button aria-label="Fechar aviso" onClick={() => setError('')}><X size={16}/></button></div>}
     <div className="email-summary stats-grid">
