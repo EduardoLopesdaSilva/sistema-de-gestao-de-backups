@@ -6,7 +6,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "email_access_import")
 public class EmailAccessImport {
-    @Id @Column(name = "source_checksum", length = 64) private String sourceChecksum;
+    @Id @Column(name = "source_checksum", length = 64, columnDefinition = "char(64)") private String sourceChecksum;
     @Column(name = "source_name", nullable = false) private String sourceName;
     @Column(name = "imported_records", nullable = false) private int importedRecords;
     @Column(name = "imported_at", insertable = false, updatable = false) private Instant importedAt;

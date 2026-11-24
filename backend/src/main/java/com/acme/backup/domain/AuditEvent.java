@@ -17,7 +17,7 @@ public class AuditEvent {
     @Column(name = "item_id") private UUID itemId;
     @Column(nullable = false) private String action;
     @Column(nullable = false) private String result;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") private Map<String, Object> details;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "json") private Map<String, Object> details;
     public AuditEvent() {}
     public UUID getId() { return id; }
     public void setId(UUID value) { id = value; }

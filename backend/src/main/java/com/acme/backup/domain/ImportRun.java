@@ -7,7 +7,7 @@ import java.util.UUID;
 @Table(name = "import_run")
 public class ImportRun {
     @Id private UUID id;
-    @Column(name = "source_checksum", nullable = false, unique = true, length = 64) private String sourceChecksum;
+    @Column(name = "source_checksum", nullable = false, unique = true, length = 64, columnDefinition = "char(64)") private String sourceChecksum;
     @Column(name = "source_name", nullable = false) private String sourceName;
     @Column(nullable = false) private String outcome;
     @Column(name = "imported_volumes", nullable = false) private int importedVolumes;

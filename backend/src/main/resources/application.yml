@@ -21,11 +21,10 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-  flyway:
-    enabled: true
+    database-platform: org.hibernate.dialect.MySQLDialect
 app:
   auth:
-    initial-password: "${AUTH_INITIAL_PASSWORD:ease.123#}"
+    initial-password: "${AUTH_INITIAL_PASSWORD:}"
   email-access:
     encryption-key: ${EMAIL_ACCESS_ENCRYPTION_KEY:}
   cors-origin: ${CORS_ORIGIN:http://localhost:3000}

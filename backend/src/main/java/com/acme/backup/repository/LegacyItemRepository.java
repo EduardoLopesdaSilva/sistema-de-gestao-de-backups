@@ -11,16 +11,14 @@ public interface LegacyItemRepository extends JpaRepository<LegacyItem, String> 
     @Query(value = """
         SELECT li.* FROM legacy_item li
         WHERE (:volume = '' OR li.volume_name = :volume)
-          AND (:q = '' OR to_tsvector('simple', coalesce(li.label, '')) @@ plainto_tsquery('simple', :q)
-               OR lower(li.label) LIKE lower(concat('%', :q, '%'))
+          AND (:q = '' OR lower(coalesce(li.label, '')) LIKE lower(concat('%', :q, '%'))
                OR lower(li.volume_name) LIKE lower(concat('%', :q, '%')))
         ORDER BY li.volume_name, li.label
         """,
         countQuery = """
         SELECT count(*) FROM legacy_item li
         WHERE (:volume = '' OR li.volume_name = :volume)
-          AND (:q = '' OR to_tsvector('simple', coalesce(li.label, '')) @@ plainto_tsquery('simple', :q)
-               OR lower(li.label) LIKE lower(concat('%', :q, '%'))
+          AND (:q = '' OR lower(coalesce(li.label, '')) LIKE lower(concat('%', :q, '%'))
                OR lower(li.volume_name) LIKE lower(concat('%', :q, '%')))
         """,
         nativeQuery = true)

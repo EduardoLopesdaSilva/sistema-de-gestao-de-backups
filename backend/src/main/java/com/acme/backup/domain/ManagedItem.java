@@ -10,7 +10,7 @@ public class ManagedItem {
     @Id private UUID id;
     @Column(name = "volume_id", nullable = false) private String volumeId;
     @Column(name = "parent_id") private UUID parentId;
-    @Column(name = "relative_path", nullable = false, columnDefinition = "text") private String relativePath;
+    @Column(name = "relative_path", nullable = false, length = 680) private String relativePath;
     @Column(name = "display_name", nullable = false) private String displayName;
     @Column(name = "content_type") private String contentType;
     @Column(name = "size_bytes", nullable = false) private long sizeBytes;

@@ -25,7 +25,9 @@ public class AuthUserInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (users.existsById("ti3")) return;
+        if (users.count() > 0) return;
+        if (initialPassword == null || initialPassword.length() < 16)
+            throw new IllegalStateException("Defina AUTH_INITIAL_PASSWORD com pelo menos 16 caracteres antes de criar a conta inicial.");
         AuthUser user = new AuthUser();
         user.setUsername("ti3");
         user.setPasswordHash(passwords.encode(initialPassword));

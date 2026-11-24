@@ -9,7 +9,7 @@ import java.time.Instant;
 @Entity
 @Table(name="backup_record_import")
 public class BackupRecordImport {
-    @Id @Column(name="source_checksum", length=64) private String sourceChecksum;
+    @Id @Column(name="source_checksum", length=64, columnDefinition="char(64)") private String sourceChecksum;
     @Column(name="imported_at", insertable=false, updatable=false) private Instant importedAt;
     @Column(name="imported_records", nullable=false) private int importedRecords;
     public BackupRecordImport() {}

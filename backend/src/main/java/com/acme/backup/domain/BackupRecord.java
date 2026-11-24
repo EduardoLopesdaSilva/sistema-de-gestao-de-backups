@@ -22,7 +22,7 @@ public class BackupRecord {
     @Column(nullable = false) private boolean blocked;
     @Column(name = "source_sheet") private String sourceSheet;
     @Column(name = "source_row") private Integer sourceRow;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "source_details", columnDefinition = "jsonb") private Map<String, Object> sourceDetails;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "source_details", columnDefinition = "json") private Map<String, Object> sourceDetails;
     @Column(name = "created_by", nullable = false) private String createdBy;
     @Column(name = "created_at", insertable = false, updatable = false) private Instant createdAt;
     public BackupRecord() {}
